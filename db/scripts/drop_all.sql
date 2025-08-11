@@ -25,7 +25,7 @@ BEGIN TRY
     BEGIN TRAN;
 
     PRINT '--- Dropping foreign keys ---';
-    :r ..\schema\02_constraints_indexes\drop_foreign_keys.sql
+    :r ../schema/02_constraints_indexes/drop_foreign_keys.sql
 
     PRINT '--- Dropping facts ---';
     DROP TABLE IF EXISTS dbo.FactProduction;

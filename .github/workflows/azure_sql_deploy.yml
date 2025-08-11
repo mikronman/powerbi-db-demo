@@ -13,55 +13,17 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install sqlcmd (ODBC + tools)
+      - name: Install sqlcmd
         run: |
           sudo ACCEPT_EULA=Y apt-get update
           sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18 unixodbc-dev
           echo '/opt/mssql-tools18/bin' >> $GITHUB_PATH
+      - run: sqlcmd -?
 
-      - name: Verify sqlcmd
-        run: sqlcmd -?
-
-      - name: Build CI-safe deploy script (normalize, add GO around includes, strip CRLF and TRY/CATCH/TRAN)
-        working-directory: db/scripts
-        run: |
-          awk '{
-            line=$0
-            sub(/\r$/, "", line)  # strip CR
-            # drop outer control flow that conflicts with GO across files
-            if (line ~ /^[[:space:]]*BEGIN[[:space:]]+TRY\b/i) next
-            if (line ~ /^[[:space:]]*END[[:space:]]+TRY\b/i)   next
-            if (line ~ /^[[:space:]]*BEGIN[[:space:]]+CATCH\b/i) next
-            if (line ~ /^[[:space:]]*END[[:space:]]+CATCH\b/i)   next
-            if (line ~ /^[[:space:]]*BEGIN[[:space:]]+TRAN\b/i)  next
-            if (line ~ /^[[:space:]]*COMMIT[[:space:]]+TRAN\b/i) next
-            if (line ~ /^[[:space:]]*ROLLBACK[[:space:]]+TRAN\b/i) next
-            if (line ~ /^[[:space:]]*THROW\b/i) next
-
-            # If this is a :r include (with optional leading spaces), normalize backslashes and surround with GO
-            if (line ~ /^[[:space:]]*:r[[:space:]]+/) {
-              gsub("\\\\","/", line)
-              print "GO"
-              print line
-              print "GO"
-            } else {
-              print line
-            }
-          }' deploy_all.sql > deploy_all.ci.sql
-
-          echo "==== First 80 lines ===="
-          nl -ba deploy_all.ci.sql | sed -n '1,80p'
-          echo "==== All include lines (post-normalization) ===="
-          grep -nE '^[[:space:]]*:r[[:space:]]+' deploy_all.ci.sql || true
-          echo "==== All GO lines around includes (sample) ===="
-          nl -ba deploy_all.ci.sql | grep -n -E '^( *GO| *:r )' | sed -n '1,60p' || true
-
-      - name: Run deploy_all.ci.sql
+      - name: Run deploy_all.sql (from db/scripts)
         working-directory: db/scripts
         env:
           SQLCMDPASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
@@ -70,4 +32,4 @@ jobs:
             -S "${{ secrets.AZURE_SQL_SERVER }}" \
             -U "${{ secrets.AZURE_SQL_USER }}" \
             -v DBName="${{ secrets.AZURE_SQL_DB }}" IncludeSeeds="${{ github.event.inputs.includeSeeds }}" \
-            -i "./deploy_all.ci.sql"
+            -i "./deploy_all.sql"
