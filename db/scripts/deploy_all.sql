@@ -1,33 +1,23 @@
 /* ======================================================
-   deploy_all.sql  (CI/SSMS/ADS friendly)
+   deploy_all.sql  (CI/SSMS/ADS friendly for Azure SQL DB)
    Creates all schema objects in dependency order:
-     1) (Optional) Create/USE database
-     2) Dimensions, bridges, helpers
-     3) Facts
-     4) Foreign keys
-     5) Indexes
-     6) (Optional) Seed data
-     7) Sanity checks
+     1) Dimensions, bridges, helpers
+     2) Facts
+     3) Foreign keys
+     4) Indexes
+     5) (Optional) Seed data
+     6) Sanity checks
    ====================================================== */
 
-:setvar DBName "StarSchemaDemo"
+:setvar DBName "powerbi-demo-api-server"
 :setvar IncludeSeeds "1"     -- 1 = run seeds, 0 = skip seeds
 
 -- Ensure SQLCMD mode is ON if running in SSMS/ADS (Query > SQLCMD Mode)
 
 PRINT '=== START DEPLOY ===';
 
--- 1) Target database (create if missing)
-IF DB_ID('$(DBName)') IS NULL
-BEGIN
-    PRINT 'Creating database [$(DBName)]...';
-    DECLARE @sql nvarchar(max) = 'CREATE DATABASE [' + REPLACE('$(DBName)',']',']]') + '];';
-    EXEC(@sql);
-END;
-GO
-
-USE [$(DBName)];
-GO
+-- NOTE: On Azure SQL DB, connect directly to the target DB with -d.
+-- Do NOT attempt CREATE DATABASE or USE here.
 
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
@@ -71,7 +61,7 @@ PRINT '--- Adding Indexes ---';
 :r ../schema/02_constraints_indexes/02_add_indexes.sql
 GO
 
--- 6) Seeds (optional)
+-- 5) Seeds (optional)
 IF '$(IncludeSeeds)' = '1'
 BEGIN
     PRINT '--- Seeding Dimensions ---';
@@ -108,7 +98,7 @@ BEGIN
 END
 GO
 
--- 7) Sanity checks
+-- 6) Sanity checks
 PRINT '--- Row Count Sanity Checks ---';
 IF OBJECT_ID('tempdb..#counts') IS NOT NULL DROP TABLE #counts;
 CREATE TABLE #counts (TableName sysname, RowCount bigint);

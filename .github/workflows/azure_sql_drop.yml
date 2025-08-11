@@ -16,7 +16,7 @@ jobs:
           echo '/opt/mssql-tools18/bin' >> $GITHUB_PATH
       - run: sqlcmd -?
 
-      - name: Run drop_all.sql (from db/scripts)
+      - name: Drop all
         working-directory: db/scripts
         env:
           SQLCMDPASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
@@ -24,5 +24,6 @@ jobs:
           sqlcmd -C -b -I \
             -S "${{ secrets.AZURE_SQL_SERVER }}" \
             -U "${{ secrets.AZURE_SQL_USER }}" \
+            -d "${{ secrets.AZURE_SQL_DB }}" \
             -v DBName="${{ secrets.AZURE_SQL_DB }}" \
             -i "./drop_all.sql"
