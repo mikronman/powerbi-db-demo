@@ -23,8 +23,8 @@ jobs:
           echo '/opt/mssql-tools18/bin' >> $GITHUB_PATH
       - run: sqlcmd -?
 
-      # Create DB if missing (connect to master)
-      - name: Ensure database exists
+      # Guard: require the DB to already exist; do NOT create it
+      - name: Verify database exists (must pre-exist)
         env:
           SQLCMDPASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
         run: |
@@ -32,9 +32,8 @@ jobs:
             -S "${{ secrets.AZURE_SQL_SERVER }}" \
             -U "${{ secrets.AZURE_SQL_USER }}" \
             -d "master" \
-            -Q "IF DB_ID(N'${{ secrets.AZURE_SQL_DB }}') IS NULL CREATE DATABASE [${{ secrets.AZURE_SQL_DB }}];"
+            -Q "IF DB_ID(N'${{ secrets.AZURE_SQL_DB }}') IS NULL RAISERROR('Database [${{ secrets.AZURE_SQL_DB }}] not found on server.',16,1);"
 
-      # Now run deploy_all.sql within the DB context
       - name: Run deploy_all.sql (from db/scripts)
         working-directory: db/scripts
         env:
