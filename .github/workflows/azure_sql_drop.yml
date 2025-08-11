@@ -16,20 +16,35 @@ jobs:
           echo '/opt/mssql-tools18/bin' >> $GITHUB_PATH
       - run: sqlcmd -?
 
-      # 1) Drop FKs by running the FK script directly (no :r)
-      - name: Drop foreign keys (schema dbo)
+      - name: Show workspace + confirm file exists
+        run: |
+          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
+          pwd
+          ls -la
+          echo "---- tree db ----"
+          ls -la db
+          echo "---- tree db/schema/02_constraints_indexes ----"
+          ls -la db/schema/02_constraints_indexes || true
+          # Build absolute path for FK drop script
+          echo "FK_SCRIPT=$(pwd)/db/schema/02_constraints_indexes/drop_foreign_keys.sql" >> $GITHUB_ENV
+
+      - name: Drop foreign keys (schema dbo) via absolute path
         env:
           SQLCMDPASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
         run: |
+          echo "Using FK script at: $FK_SCRIPT"
+          if [ ! -f "$FK_SCRIPT" ]; then
+            echo "ERROR: File not found: $FK_SCRIPT" >&2
+            exit 1
+          fi
           sqlcmd -C -b -I -l 60 \
             -S "${{ secrets.AZURE_SQL_SERVER }}" \
             -U "${{ secrets.AZURE_SQL_USER }}" \
             -d "${{ secrets.AZURE_SQL_DB }}" \
             -v SchemaName="dbo" \
-            -i db/schema/02_constraints_indexes/drop_foreign_keys.sql
+            -i "$FK_SCRIPT"
 
-      # 2) Drop tables in reverse dependency order (inline script)
-      - name: Drop tables
+      - name: Drop tables in reverse dependency order (inline)
         env:
           SQLCMDPASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
         run: |
