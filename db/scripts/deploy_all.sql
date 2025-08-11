@@ -9,7 +9,7 @@
      6) Sanity checks
    ====================================================== */
 
-:setvar DBName "powerbi-demo-api-server"
+:setvar DBName "powerbi-demo-api-database"
 :setvar IncludeSeeds "1"     -- 1 = run seeds, 0 = skip seeds
 
 -- Ensure SQLCMD mode is ON if running in SSMS/ADS (Query > SQLCMD Mode)
