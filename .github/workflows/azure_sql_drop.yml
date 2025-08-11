@@ -6,6 +6,7 @@ on:
 jobs:
   drop:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,7 +20,15 @@ jobs:
       - name: Verify sqlcmd
         run: sqlcmd -?
 
-      - name: Run drop_all.sql
+      - name: Normalize include paths for Linux
+        working-directory: db/scripts
+        run: |
+          # Rewrite ONLY :r include lines to use forward slashes
+          sed -E '/^:r[[:space:]]/ s~\\~/~g' drop_all.sql > drop_all.linux.sql
+          echo "==== drop_all.linux.sql (header) ===="
+          head -n 20 drop_all.linux.sql
+
+      - name: Run drop_all.linux.sql
         working-directory: db/scripts
         env:
           SQLCMDPASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
@@ -28,4 +37,4 @@ jobs:
             -S "${{ secrets.AZURE_SQL_SERVER }}" \
             -U "${{ secrets.AZURE_SQL_USER }}" \
             -v DBName="${{ secrets.AZURE_SQL_DB }}" \
-            -i "./drop_all.sql"
+            -i "./drop_all.linux.sql"
