@@ -27,22 +27,31 @@ jobs:
       - name: Verify sqlcmd
         run: sqlcmd -?
 
-      - name: Normalize include paths (handle leading spaces + CRLF)
+      - name: Build CI-safe deploy script (normalize :r, strip CRLF, drop TRY/CATCH/TRAN)
         working-directory: db/scripts
         run: |
           awk '{
-            # strip CR if present
-            sub(/\r$/, "")
-            # if this is a :r line (optionally preceded by spaces), convert backslashes to slashes
-            if ($0 ~ /^[[:space:]]*:r[[:space:]]+/) { gsub("\\\\","/",$0) }
-            print
-          }' deploy_all.sql > deploy_all.linux.sql
+            line=$0
+            sub(/\r$/, "", line)                                     # strip CR
+            if (line ~ /^[[:space:]]*:r[[:space:]]+/) gsub("\\\\","/",line) # normalize include paths
+            # skip control-flow lines that conflict with GO in includes
+            if (line ~ /^[[:space:]]*BEGIN[[:space:]]+TRY\b/i) next
+            if (line ~ /^[[:space:]]*END[[:space:]]+TRY\b/i) next
+            if (line ~ /^[[:space:]]*BEGIN[[:space:]]+CATCH\b/i) next
+            if (line ~ /^[[:space:]]*END[[:space:]]+CATCH\b/i) next
+            if (line ~ /^[[:space:]]*BEGIN[[:space:]]+TRAN\b/i) next
+            if (line ~ /^[[:space:]]*COMMIT[[:space:]]+TRAN\b/i) next
+            if (line ~ /^[[:space:]]*ROLLBACK[[:space:]]+TRAN\b/i) next
+            if (line ~ /^[[:space:]]*THROW\b/i) next
+            print line
+          }' deploy_all.sql > deploy_all.ci.sql
 
-          echo "==== Show include lines after normalization ===="
-          grep -n "[:][r][[:space:]]" -n deploy_all.linux.sql || true
-          echo "==============================================="
+          echo "==== First 40 lines (sanity) ===="
+          nl -ba deploy_all.ci.sql | sed -n '1,40p'
+          echo "==== Include lines (post-normalization) ===="
+          grep -nE '^[[:space:]]*:r[[:space:]]+' deploy_all.ci.sql || true
 
-      - name: Run deploy_all.linux.sql
+      - name: Run deploy_all.ci.sql
         working-directory: db/scripts
         env:
           SQLCMDPASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
@@ -51,4 +60,4 @@ jobs:
             -S "${{ secrets.AZURE_SQL_SERVER }}" \
             -U "${{ secrets.AZURE_SQL_USER }}" \
             -v DBName="${{ secrets.AZURE_SQL_DB }}" IncludeSeeds="${{ github.event.inputs.includeSeeds }}" \
-            -i "./deploy_all.linux.sql"
+            -i "./deploy_all.ci.sql"

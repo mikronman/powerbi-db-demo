@@ -20,20 +20,30 @@ jobs:
       - name: Verify sqlcmd
         run: sqlcmd -?
 
-      - name: Normalize include paths (handle leading spaces + CRLF)
+      - name: Build CI-safe drop script (normalize :r, strip CRLF, drop TRY/CATCH/TRAN)
         working-directory: db/scripts
         run: |
           awk '{
-            sub(/\r$/, "")
-            if ($0 ~ /^[[:space:]]*:r[[:space:]]+/) { gsub("\\\\","/",$0) }
-            print
-          }' drop_all.sql > drop_all.linux.sql
+            line=$0
+            sub(/\r$/, "", line)
+            if (line ~ /^[[:space:]]*:r[[:space:]]+/) gsub("\\\\","/",line)
+            if (line ~ /^[[:space:]]*BEGIN[[:space:]]+TRY\b/i) next
+            if (line ~ /^[[:space:]]*END[[:space:]]+TRY\b/i) next
+            if (line ~ /^[[:space:]]*BEGIN[[:space:]]+CATCH\b/i) next
+            if (line ~ /^[[:space:]]*END[[:space:]]+CATCH\b/i) next
+            if (line ~ /^[[:space:]]*BEGIN[[:space:]]+TRAN\b/i) next
+            if (line ~ /^[[:space:]]*COMMIT[[:space:]]+TRAN\b/i) next
+            if (line ~ /^[[:space:]]*ROLLBACK[[:space:]]+TRAN\b/i) next
+            if (line ~ /^[[:space:]]*THROW\b/i) next
+            print line
+          }' drop_all.sql > drop_all.ci.sql
 
-          echo "==== Show include lines after normalization ===="
-          grep -n "[:][r][[:space:]]" -n drop_all.linux.sql || true
-          echo "==============================================="
+          echo "==== First 30 lines (sanity) ===="
+          nl -ba drop_all.ci.sql | sed -n '1,30p'
+          echo "==== Include lines (post-normalization) ===="
+          grep -nE '^[[:space:]]*:r[[:space:]]+' drop_all.ci.sql || true
 
-      - name: Run drop_all.linux.sql
+      - name: Run drop_all.ci.sql
         working-directory: db/scripts
         env:
           SQLCMDPASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
@@ -42,4 +52,4 @@ jobs:
             -S "${{ secrets.AZURE_SQL_SERVER }}" \
             -U "${{ secrets.AZURE_SQL_USER }}" \
             -v DBName="${{ secrets.AZURE_SQL_DB }}" \
-            -i "./drop_all.linux.sql"
+            -i "./drop_all.ci.sql"
