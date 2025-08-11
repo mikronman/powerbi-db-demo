@@ -1,0 +1,8 @@
+CREATE TABLE DimPlant (
+    PlantId INT IDENTITY(1,1) PRIMARY KEY,
+    PlantCode NVARCHAR(50) NOT NULL,
+    PlantName NVARCHAR(200) NOT NULL,
+    City NVARCHAR(100) NULL,
+    StateProvince NVARCHAR(100) NULL,
+    CONSTRAINT UQ_DimPlant_Code UNIQUE(PlantCode)
+);

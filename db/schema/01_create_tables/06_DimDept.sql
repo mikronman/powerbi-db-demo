@@ -1,0 +1,6 @@
+CREATE TABLE DimDept (
+    DeptId INT IDENTITY(1,1) PRIMARY KEY,
+    DeptCode NVARCHAR(50) NOT NULL,
+    DeptName NVARCHAR(200) NOT NULL,
+    CONSTRAINT UQ_DimDept_Code UNIQUE(DeptCode)
+);
