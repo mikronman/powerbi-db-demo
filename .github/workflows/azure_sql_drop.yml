@@ -1,4 +1,4 @@
-name: Azure SQL – Drop
+name: Azure SQL – Drop (CI-safe)
 
 on:
   workflow_dispatch:
@@ -16,14 +16,55 @@ jobs:
           echo '/opt/mssql-tools18/bin' >> $GITHUB_PATH
       - run: sqlcmd -?
 
-      - name: Run drop_all.sql (from db/scripts)
-        working-directory: db/scripts
+      # 1) Drop FKs by running the FK script directly (no :r)
+      - name: Drop foreign keys (schema dbo)
         env:
           SQLCMDPASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
         run: |
-          sqlcmd -C -b -I \
+          sqlcmd -C -b -I -l 60 \
             -S "${{ secrets.AZURE_SQL_SERVER }}" \
             -U "${{ secrets.AZURE_SQL_USER }}" \
             -d "${{ secrets.AZURE_SQL_DB }}" \
-            -v DBName="${{ secrets.AZURE_SQL_DB }}" \
-            -i "./drop_all.sql"
+            -v SchemaName="dbo" \
+            -i db/schema/02_constraints_indexes/drop_foreign_keys.sql
+
+      # 2) Drop tables in reverse dependency order (inline script)
+      - name: Drop tables
+        env:
+          SQLCMDPASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
+        run: |
+          cat > drop_all_ci.sql <<'SQL'
+          SET NOCOUNT ON;
+          -- Facts
+          DROP TABLE IF EXISTS dbo.FactProduction;
+          DROP TABLE IF EXISTS dbo.FactInventorySnapshot;
+          DROP TABLE IF EXISTS dbo.FactAROpen;
+          DROP TABLE IF EXISTS dbo.FactForecast;
+          DROP TABLE IF EXISTS dbo.FactBudget;
+          DROP TABLE IF EXISTS dbo.FactGLActuals;
+          DROP TABLE IF EXISTS dbo.FactSales;
+          -- Bridges & helpers
+          DROP TABLE IF EXISTS dbo.Bridge_AccountToFPnAGroup;
+          DROP TABLE IF EXISTS dbo.DimFPnAGroup;
+          DROP TABLE IF EXISTS dbo.Alloc_Drivers;
+          DROP TABLE IF EXISTS dbo.Assumption_CommodityPrices;
+          DROP TABLE IF EXISTS dbo.WhatIf_Params;
+          -- Dimensions
+          DROP TABLE IF EXISTS dbo.DimSalesRep;
+          DROP TABLE IF EXISTS dbo.DimScenario;
+          DROP TABLE IF EXISTS dbo.DimWorkCenter;
+          DROP TABLE IF EXISTS dbo.DimPlant;
+          DROP TABLE IF EXISTS dbo.DimCostCenter;
+          DROP TABLE IF EXISTS dbo.DimDept;
+          DROP TABLE IF EXISTS dbo.DimGLAccount;
+          DROP TABLE IF EXISTS dbo.DimRegion;
+          DROP TABLE IF EXISTS dbo.DimProduct;
+          DROP TABLE IF EXISTS dbo.DimCustomer;
+          DROP TABLE IF EXISTS dbo.DimDate;
+          SQL
+
+          sqlcmd -C -b -I -l 60 \
+            -S "${{ secrets.AZURE_SQL_SERVER }}" \
+            -U "${{ secrets.AZURE_SQL_USER }}" \
+            -d "${{ secrets.AZURE_SQL_DB }}" \
+            -i ./drop_all_ci.sql
