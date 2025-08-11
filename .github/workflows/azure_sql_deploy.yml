@@ -23,23 +23,36 @@ jobs:
           echo '/opt/mssql-tools18/bin' >> $GITHUB_PATH
       - run: sqlcmd -?
 
-      # Guard: require the DB to already exist; do NOT create it
-      - name: Verify database exists (must pre-exist)
+      # Diagnostics: list DBs on server, then confirm target DB context
+      - name: Diagnostic — list databases on server
         env:
           SQLCMDPASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
         run: |
-          sqlcmd -C -b -I \
+          echo "Server: ${{ secrets.AZURE_SQL_SERVER }}"
+          echo "User:   ${{ secrets.AZURE_SQL_USER }}"
+          echo "Target DB: ${{ secrets.AZURE_SQL_DB }}"
+          sqlcmd -C -b -I -l 60 \
             -S "${{ secrets.AZURE_SQL_SERVER }}" \
             -U "${{ secrets.AZURE_SQL_USER }}" \
-            -d "master" \
-            -Q "IF DB_ID(N'${{ secrets.AZURE_SQL_DB }}') IS NULL RAISERROR('Database [${{ secrets.AZURE_SQL_DB }}] not found on server.',16,1);"
+            -d master \
+            -Q "SELECT name FROM sys.databases ORDER BY name;"
+
+      - name: Diagnostic — connect to target DB
+        env:
+          SQLCMDPASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
+        run: |
+          sqlcmd -C -b -I -l 60 \
+            -S "${{ secrets.AZURE_SQL_SERVER }}" \
+            -U "${{ secrets.AZURE_SQL_USER }}" \
+            -d "${{ secrets.AZURE_SQL_DB }}" \
+            -Q "SELECT DB_NAME() AS CurrentDb;"
 
       - name: Run deploy_all.sql (from db/scripts)
         working-directory: db/scripts
         env:
           SQLCMDPASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
         run: |
-          sqlcmd -C -b -I \
+          sqlcmd -C -b -I -l 60 \
             -S "${{ secrets.AZURE_SQL_SERVER }}" \
             -U "${{ secrets.AZURE_SQL_USER }}" \
             -d "${{ secrets.AZURE_SQL_DB }}" \
