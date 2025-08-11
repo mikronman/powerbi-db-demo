@@ -20,28 +20,37 @@ jobs:
       - name: Verify sqlcmd
         run: sqlcmd -?
 
-      - name: Build CI-safe drop script (normalize :r, strip CRLF, drop TRY/CATCH/TRAN)
+      - name: Build CI-safe drop script (normalize, add GO around includes, strip CRLF and TRY/CATCH/TRAN)
         working-directory: db/scripts
         run: |
           awk '{
             line=$0
             sub(/\r$/, "", line)
-            if (line ~ /^[[:space:]]*:r[[:space:]]+/) gsub("\\\\","/",line)
-            if (line ~ /^[[:space:]]*BEGIN[[:space:]]+TRY\b/i) next
-            if (line ~ /^[[:space:]]*END[[:space:]]+TRY\b/i) next
+            if (line ~ /^[[:space:]]*BEGIN[[:space:]]+TRY\b/i)  next
+            if (line ~ /^[[:space:]]*END[[:space:]]+TRY\b/i)    next
             if (line ~ /^[[:space:]]*BEGIN[[:space:]]+CATCH\b/i) next
-            if (line ~ /^[[:space:]]*END[[:space:]]+CATCH\b/i) next
-            if (line ~ /^[[:space:]]*BEGIN[[:space:]]+TRAN\b/i) next
+            if (line ~ /^[[:space:]]*END[[:space:]]+CATCH\b/i)   next
+            if (line ~ /^[[:space:]]*BEGIN[[:space:]]+TRAN\b/i)  next
             if (line ~ /^[[:space:]]*COMMIT[[:space:]]+TRAN\b/i) next
             if (line ~ /^[[:space:]]*ROLLBACK[[:space:]]+TRAN\b/i) next
             if (line ~ /^[[:space:]]*THROW\b/i) next
-            print line
+
+            if (line ~ /^[[:space:]]*:r[[:space:]]+/) {
+              gsub("\\\\","/", line)
+              print "GO"
+              print line
+              print "GO"
+            } else {
+              print line
+            }
           }' drop_all.sql > drop_all.ci.sql
 
-          echo "==== First 30 lines (sanity) ===="
-          nl -ba drop_all.ci.sql | sed -n '1,30p'
+          echo "==== First 60 lines ===="
+          nl -ba drop_all.ci.sql | sed -n '1,60p'
           echo "==== Include lines (post-normalization) ===="
           grep -nE '^[[:space:]]*:r[[:space:]]+' drop_all.ci.sql || true
+          echo "==== GO markers around includes (sample) ===="
+          nl -ba drop_all.ci.sql | grep -n -E '^( *GO| *:r )' | sed -n '1,60p' || true
 
       - name: Run drop_all.ci.sql
         working-directory: db/scripts
