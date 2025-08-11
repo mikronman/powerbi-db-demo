@@ -1,0 +1,164 @@
+name: Azure SQL – Smoke Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install sqlcmd (ODBC + tools)
+        run: |
+          sudo ACCEPT_EULA=Y apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18 unixodbc-dev
+          echo '/opt/mssql-tools18/bin' >> $GITHUB_PATH
+
+      - name: Create smoke_test.sql
+        working-directory: db/scripts
+        run: |
+          cat > smoke_test.sql << 'SQL'
+          :setvar DBName "$(DBName)"
+
+          USE [$(DBName)];
+          SET NOCOUNT ON;
+
+          -- 1) Row counts per table
+          SELECT 'DimDate'                AS TableName, COUNT(*) AS RowCount FROM dbo.DimDate
+          UNION ALL SELECT 'DimCustomer', COUNT(*) FROM dbo.DimCustomer
+          UNION ALL SELECT 'DimProduct',  COUNT(*) FROM dbo.DimProduct
+          UNION ALL SELECT 'DimRegion',   COUNT(*) FROM dbo.DimRegion
+          UNION ALL SELECT 'DimGLAccount',COUNT(*) FROM dbo.DimGLAccount
+          UNION ALL SELECT 'DimDept',     COUNT(*) FROM dbo.DimDept
+          UNION ALL SELECT 'DimCostCenter',COUNT(*) FROM dbo.DimCostCenter
+          UNION ALL SELECT 'DimPlant',    COUNT(*) FROM dbo.DimPlant
+          UNION ALL SELECT 'DimWorkCenter',COUNT(*) FROM dbo.DimWorkCenter
+          UNION ALL SELECT 'DimScenario', COUNT(*) FROM dbo.DimScenario
+          UNION ALL SELECT 'DimSalesRep', COUNT(*) FROM dbo.DimSalesRep
+          UNION ALL SELECT 'DimFPnAGroup',COUNT(*) FROM dbo.DimFPnAGroup
+          UNION ALL SELECT 'Bridge_AccountToFPnAGroup', COUNT(*) FROM dbo.Bridge_AccountToFPnAGroup
+          UNION ALL SELECT 'Alloc_Drivers', COUNT(*) FROM dbo.Alloc_Drivers
+          UNION ALL SELECT 'Assumption_CommodityPrices', COUNT(*) FROM dbo.Assumption_CommodityPrices
+          UNION ALL SELECT 'WhatIf_Params', COUNT(*) FROM dbo.WhatIf_Params
+          UNION ALL SELECT 'FactSales',   COUNT(*) FROM dbo.FactSales
+          UNION ALL SELECT 'FactGLActuals', COUNT(*) FROM dbo.FactGLActuals
+          UNION ALL SELECT 'FactBudget',  COUNT(*) FROM dbo.FactBudget
+          UNION ALL SELECT 'FactForecast',COUNT(*) FROM dbo.FactForecast
+          UNION ALL SELECT 'FactAROpen',  COUNT(*) FROM dbo.FactAROpen
+          UNION ALL SELECT 'FactInventorySnapshot', COUNT(*) FROM dbo.FactInventorySnapshot
+          UNION ALL SELECT 'FactProduction', COUNT(*) FROM dbo.FactProduction
+          ORDER BY TableName;
+
+          -- 2) Foreign key count (sanity)
+          PRINT '--- Foreign Keys Present ---';
+          SELECT COUNT(*) AS ForeignKeyCount FROM sys.foreign_keys WHERE is_ms_shipped = 0;
+
+          -- 3) Sample joined rows from FactSales
+          PRINT '--- Sample Sales Rows ---';
+          SELECT TOP 25
+              d.FullDate,
+              c.CustomerName,
+              p.ProductName,
+              fs.Qty,
+              fs.NetPrice,
+              fs.NetRevenue
+          FROM dbo.FactSales fs
+          JOIN dbo.DimDate d     ON d.DateId = fs.DateId
+          JOIN dbo.DimCustomer c ON c.CustomerId = fs.CustomerId
+          JOIN dbo.DimProduct p  ON p.ProductId = fs.ProductId
+          ORDER BY d.FullDate DESC, fs.FactId DESC;
+          SQL
+
+      - name: Run row counts to CSV
+        working-directory: db/scripts
+        env:
+          SQLCMDPASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
+        run: |
+          sqlcmd -C -b -I \
+            -S "${{ secrets.AZURE_SQL_SERVER }}" \
+            -U "${{ secrets.AZURE_SQL_USER }}" \
+            -v DBName="${{ secrets.AZURE_SQL_DB }}" \
+            -i "./smoke_test.sql" \
+            -Q " " \
+            -o "./smoke_full_output.txt"
+
+          # Extract the first resultset (row counts) into CSV
+          # Simpler: rerun just that query cleanly to CSV
+          cat > rowcounts_only.sql << 'SQL'
+          :setvar DBName "$(DBName)"
+          USE [$(DBName)];
+          SET NOCOUNT ON;
+          SELECT 'DimDate' AS TableName, COUNT(*) AS RowCount FROM dbo.DimDate
+          UNION ALL SELECT 'DimCustomer', COUNT(*) FROM dbo.DimCustomer
+          UNION ALL SELECT 'DimProduct',  COUNT(*) FROM dbo.DimProduct
+          UNION ALL SELECT 'DimRegion',   COUNT(*) FROM dbo.DimRegion
+          UNION ALL SELECT 'DimGLAccount',COUNT(*) FROM dbo.DimGLAccount
+          UNION ALL SELECT 'DimDept',     COUNT(*) FROM dbo.DimDept
+          UNION ALL SELECT 'DimCostCenter',COUNT(*) FROM dbo.DimCostCenter
+          UNION ALL SELECT 'DimPlant',    COUNT(*) FROM dbo.DimPlant
+          UNION ALL SELECT 'DimWorkCenter',COUNT(*) FROM dbo.DimWorkCenter
+          UNION ALL SELECT 'DimScenario', COUNT(*) FROM dbo.DimScenario
+          UNION ALL SELECT 'DimSalesRep', COUNT(*) FROM dbo.DimSalesRep
+          UNION ALL SELECT 'DimFPnAGroup',COUNT(*) FROM dbo.DimFPnAGroup
+          UNION ALL SELECT 'Bridge_AccountToFPnAGroup', COUNT(*) FROM dbo.Bridge_AccountToFPnAGroup
+          UNION ALL SELECT 'Alloc_Drivers', COUNT(*) FROM dbo.Alloc_Drivers
+          UNION ALL SELECT 'Assumption_CommodityPrices', COUNT(*) FROM dbo.Assumption_CommodityPrices
+          UNION ALL SELECT 'WhatIf_Params', COUNT(*) FROM dbo.WhatIf_Params
+          UNION ALL SELECT 'FactSales',   COUNT(*) FROM dbo.FactSales
+          UNION ALL SELECT 'FactGLActuals', COUNT(*) FROM dbo.FactGLActuals
+          UNION ALL SELECT 'FactBudget',  COUNT(*) FROM dbo.FactBudget
+          UNION ALL SELECT 'FactForecast',COUNT(*) FROM dbo.FactForecast
+          UNION ALL SELECT 'FactAROpen',  COUNT(*) FROM dbo.FactAROpen
+          UNION ALL SELECT 'FactInventorySnapshot', COUNT(*) FROM dbo.FactInventorySnapshot
+          UNION ALL SELECT 'FactProduction', COUNT(*) FROM dbo.FactProduction
+          ORDER BY TableName;
+          SQL
+
+          sqlcmd -C -b -I \
+            -S "${{ secrets.AZURE_SQL_SERVER }}" \
+            -U "${{ secrets.AZURE_SQL_USER }}" \
+            -v DBName="${{ secrets.AZURE_SQL_DB }}" \
+            -i "./rowcounts_only.sql" \
+            -s "," -W -o "./row_counts.csv"
+
+      - name: Run sales sample to CSV
+        working-directory: db/scripts
+        env:
+          SQLCMDPASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
+        run: |
+          cat > sales_sample.sql << 'SQL'
+          :setvar DBName "$(DBName)"
+          USE [$(DBName)];
+          SET NOCOUNT ON;
+          SELECT TOP 50
+              d.FullDate,
+              c.CustomerName,
+              p.ProductName,
+              fs.Qty,
+              fs.NetPrice,
+              fs.NetRevenue
+          FROM dbo.FactSales fs
+          JOIN dbo.DimDate d     ON d.DateId = fs.DateId
+          JOIN dbo.DimCustomer c ON c.CustomerId = fs.CustomerId
+          JOIN dbo.DimProduct p  ON p.ProductId = fs.ProductId
+          ORDER BY d.FullDate DESC, fs.FactId DESC;
+          SQL
+
+          sqlcmd -C -b -I \
+            -S "${{ secrets.AZURE_SQL_SERVER }}" \
+            -U "${{ secrets.AZURE_SQL_USER }}" \
+            -v DBName="${{ secrets.AZURE_SQL_DB }}" \
+            -i "./sales_sample.sql" \
+            -s "," -W -o "./sales_sample.csv"
+
+      - name: Upload smoke test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-results
+          path: |
+            db/scripts/row_counts.csv
+            db/scripts/sales_sample.csv
+            db/scripts/smoke_full_output.txt

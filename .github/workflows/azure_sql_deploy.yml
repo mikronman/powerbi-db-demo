@@ -1,0 +1,38 @@
+name: Azure SQL – Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      includeSeeds:
+        description: "Include seed data? 1=yes, 0=no"
+        required: true
+        default: "1"
+        type: choice
+        options: ["1", "0"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install sqlcmd (ODBC + tools)
+        run: |
+          sudo ACCEPT_EULA=Y apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18 unixodbc-dev
+          echo '/opt/mssql-tools18/bin' >> $GITHUB_PATH
+
+      - name: Verify sqlcmd
+        run: sqlcmd -?
+
+      - name: Run deploy_all.sql
+        working-directory: db/scripts
+        env:
+          SQLCMDPASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
+        run: |
+          sqlcmd -C -b -I \
+            -S "${{ secrets.AZURE_SQL_SERVER }}" \
+            -U "${{ secrets.AZURE_SQL_USER }}" \
+            -v DBName="${{ secrets.AZURE_SQL_DB }}" IncludeSeeds="${{ github.event.inputs.includeSeeds }}" \
+            -i "./deploy_all.sql"

@@ -1,0 +1,31 @@
+name: Azure SQL – Drop
+
+on:
+  workflow_dispatch:
+
+jobs:
+  drop:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install sqlcmd (ODBC + tools)
+        run: |
+          sudo ACCEPT_EULA=Y apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18 unixodbc-dev
+          echo '/opt/mssql-tools18/bin' >> $GITHUB_PATH
+
+      - name: Verify sqlcmd
+        run: sqlcmd -?
+
+      - name: Run drop_all.sql
+        working-directory: db/scripts
+        env:
+          SQLCMDPASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
+        run: |
+          sqlcmd -C -b -I \
+            -S "${{ secrets.AZURE_SQL_SERVER }}" \
+            -U "${{ secrets.AZURE_SQL_USER }}" \
+            -v DBName="${{ secrets.AZURE_SQL_DB }}" \
+            -i "./drop_all.sql"
