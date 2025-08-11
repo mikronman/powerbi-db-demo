@@ -20,13 +20,18 @@ jobs:
       - name: Verify sqlcmd
         run: sqlcmd -?
 
-      - name: Normalize include paths for Linux
+      - name: Normalize include paths (handle leading spaces + CRLF)
         working-directory: db/scripts
         run: |
-          # Rewrite ONLY :r include lines to use forward slashes
-          sed -E '/^:r[[:space:]]/ s~\\~/~g' drop_all.sql > drop_all.linux.sql
-          echo "==== drop_all.linux.sql (header) ===="
-          head -n 20 drop_all.linux.sql
+          awk '{
+            sub(/\r$/, "")
+            if ($0 ~ /^[[:space:]]*:r[[:space:]]+/) { gsub("\\\\","/",$0) }
+            print
+          }' drop_all.sql > drop_all.linux.sql
+
+          echo "==== Show include lines after normalization ===="
+          grep -n "[:][r][[:space:]]" -n drop_all.linux.sql || true
+          echo "==============================================="
 
       - name: Run drop_all.linux.sql
         working-directory: db/scripts
